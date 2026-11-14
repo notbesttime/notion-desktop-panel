@@ -1,0 +1,108 @@
+diff --git a/src/notion_local_ops_mcp/files.py b/src/notion_local_ops_mcp/files.py
+index ceee820..8c59c3a 100644
+--- a/src/notion_local_ops_mcp/files.py
++++ b/src/notion_local_ops_mcp/files.py
+@@ -7,6 +7,8 @@ import subprocess
+ from fnmatch import fnmatch
+ from pathlib import Path
+ 
++from .outdecode import decode_output
++
+ 
+ # Directories we almost never want to return to an agent. Used as a default
+ # prune list when recursing so that a single `list_files(recursive=True)` on a
+@@ -94,7 +96,6 @@ def _git_tracked_allowed_paths(repo_root: Path) -> set[Path] | None:
+             ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+             cwd=str(repo_root),
+             capture_output=True,
+-            text=True,
+             timeout=15,
+         )
+     except (FileNotFoundError, subprocess.TimeoutExpired):
+@@ -104,7 +105,7 @@ def _git_tracked_allowed_paths(repo_root: Path) -> set[Path] | None:
+ 
+     repo_root_resolved = repo_root.resolve()
+     allowed: set[Path] = set()
+-    for line in result.stdout.splitlines():
++    for line in decode_output(result.stdout).splitlines():
+         if not line:
+             continue
+         full = (repo_root_resolved / line).resolve()
+diff --git a/src/notion_local_ops_mcp/gitops.py b/src/notion_local_ops_mcp/gitops.py
+index e47ffdd..a7310af 100644
+--- a/src/notion_local_ops_mcp/gitops.py
++++ b/src/notion_local_ops_mcp/gitops.py
+@@ -3,6 +3,8 @@ from __future__ import annotations
+ import subprocess
+ from pathlib import Path
+ 
++from .outdecode import decode_output
++
+ 
+ def _error(code: str, message: str, **extra: object) -> dict[str, object]:
+     payload: dict[str, object] = {
+@@ -25,12 +27,19 @@ def _cwd_error(cwd: Path) -> dict[str, object] | None:
+ 
+ 
+ def _run_git(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+-    return subprocess.run(
++    # 不交給 text=True：中文 Windows 的 locale 是 cp936，git 輸出含非 GBK 位元組時
++    # 解碼會拋 UnicodeDecodeError，整個 git_* 工具就直接失敗。這裡取 bytes 再降級解碼。
++    raw = subprocess.run(
+         ["git", *args],
+         cwd=str(cwd),
+-        text=True,
+         capture_output=True,
+     )
++    return subprocess.CompletedProcess(
++        raw.args,
++        raw.returncode,
++        decode_output(raw.stdout),
++        decode_output(raw.stderr),
++    )
+ 
+ 
+ def _require_repo(cwd: Path) -> tuple[Path, str] | dict[str, object]:
+diff --git a/src/notion_local_ops_mcp/shell.py b/src/notion_local_ops_mcp/shell.py
+index d3fd389..09400e0 100644
+--- a/src/notion_local_ops_mcp/shell.py
++++ b/src/notion_local_ops_mcp/shell.py
+@@ -3,6 +3,8 @@ from __future__ import annotations
+ import subprocess
+ from pathlib import Path
+ 
++from .outdecode import decode_output
++
+ 
+ # Sentinel exit code used when the process did not produce a real return code
+ # (e.g. it timed out or never started). Keeping this as an int (not None) so
+@@ -46,7 +48,6 @@ def run_command(*, command: str, cwd: Path, timeout: int) -> dict[str, object]:
+             command,
+             cwd=str(cwd),
+             shell=True,
+-            text=True,
+             capture_output=True,
+             timeout=timeout,
+         )
+@@ -55,8 +56,8 @@ def run_command(*, command: str, cwd: Path, timeout: int) -> dict[str, object]:
+             "command": command,
+             "cwd": str(cwd),
+             "exit_code": completed.returncode,
+-            "stdout": completed.stdout,
+-            "stderr": completed.stderr,
++            "stdout": decode_output(completed.stdout),
++            "stderr": decode_output(completed.stderr),
+             "timed_out": False,
+         }
+     except subprocess.TimeoutExpired as exc:
+@@ -65,8 +66,8 @@ def run_command(*, command: str, cwd: Path, timeout: int) -> dict[str, object]:
+             "command": command,
+             "cwd": str(cwd),
+             "exit_code": TIMEOUT_EXIT_CODE,
+-            "stdout": exc.stdout or "",
+-            "stderr": exc.stderr or "",
++            "stdout": decode_output(exc.stdout),
++            "stderr": decode_output(exc.stderr),
+             "timed_out": True,
+             "timeout": timeout,
+             "error": {

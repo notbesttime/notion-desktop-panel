@@ -1,0 +1,4 @@
+# 统一 LF，避免 Windows CRLF 让 patch 与脚本失效
+* text=auto eol=lf
+*.png binary
+*.patch text eol=lf

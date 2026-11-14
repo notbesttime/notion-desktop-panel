@@ -1,0 +1,23 @@
+# 运行时产物 / 日志
+*.log
+*.log.out
+*.pid
+
+# 密钥（绝不入库）
+tunnel.token
+.env
+.env.*
+!.env.example
+
+# 本机私有文件
+backup/
+VibeHub*.md
+VibeHub*.txt
+*.lnk
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+node_modules/
