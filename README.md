@@ -35,25 +35,28 @@ Notion **确实**给你看用量，问题是：
 
 **详细图文步骤见 [docs/getting-started.md](docs/getting-started.md)**，这里是速览。
 
-### 一键启动（两种，任选）
+### 一键安装（最省事）
 
-| 方式 | 操作 | 特点 |
-|---|---|---|
-| **bat** | 双击 `start.cmd` | 有日志窗口，**第一次排错推荐**；窗口别关 |
-| **无窗口** | 双击 `start.vbs`，或给它建快捷方式 | 没有黑框、不占任务栏，**日常推荐** |
+在文件夹里**右键 `install.ps1` → 使用 PowerShell 运行**（或命令行 `powershell -ExecutionPolicy Bypass -File install.ps1`）。
 
-无窗口快捷方式的写法：
+脚本会检查 Node 版本、在桌面建一个「Notion 用量面板」快捷方式，并自动套上 Notion 的图标。之后**双击那个快捷方式**就行，无黑框、不占任务栏。
 
+### 不想装快捷方式？直接双击
+
+| 文件 | 特点 |
+|---|---|
+| `start.cmd` | 有日志窗口，**第一次排错推荐**；窗口别关（关了面板就没了） |
+| `start.vbs` | 无窗口启动，但双击后没有可见反馈，适合已经确认能用的情况 |
+
+### 开机自动启动（可选）
+
+仓库**默认不注册任何自启**。想要的话：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 -AutoStart
 ```
-目标：C:\Windows\system32\wscript.exe
-参数："<插件目录>\start.vbs"
-```
 
-### 开机自动启动
-
-仓库**默认不注册任何自启**（多数人偶尔看看，没必要常驻）。想要的话：
-
-把上面的无窗口快捷方式丢进 `shell:startup`（Win+R 输入 `shell:startup` 回车）即可。
+会额外往「启动」文件夹放一份快捷方式。不想用了删掉它即可。
 
 > **建议直接用这个快捷方式代替原来的 Notion 图标。** Notion 是单实例，必须带调试端口启动才能注入；如果你先点原版 Notion 再点面板启动器，启动器会把 Notion 关掉重开一次。反过来（先启动器）就不会有这个问题。
 
