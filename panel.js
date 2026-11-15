@@ -53,6 +53,7 @@
     '.np-dot{width:7px;height:7px;border-radius:50%;background:var(--np-ok);flex:none}',
     '.np-dot.warn{background:var(--np-warn)}.np-dot.err{background:var(--np-err)}',
     '.np-pct{font-variant-numeric:tabular-nums;font-weight:600}',
+    '.np-eta{color:var(--np-mut);font-size:11px;font-variant-numeric:tabular-nums;letter-spacing:-.1px}',
     '.np-sep{width:1px;height:12px;background:var(--np-line);flex:none}',
     '.np-mut{color:var(--np-mut)}',
     '.np-card{position:absolute;right:0;bottom:44px;width:330px;max-height:min(74vh,620px);overflow:auto;background:var(--np-bg);border:1px solid var(--np-line);border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.48)}',
@@ -100,6 +101,17 @@
     if (d > 0) return d + '天' + h + '小时';
     if (h > 0) return h + '小时' + m + '分';
     return m + '分';
+  }
+  // 药丸里要短：4h51m 这种写法比「4小时51分」省一半宽度。
+  function eta(ms) {
+    if (!ms || ms <= Date.now()) return '';
+    let s = Math.floor((ms - Date.now()) / 1000);
+    const d = Math.floor(s / 86400); s -= d * 86400;
+    const h = Math.floor(s / 3600); s -= h * 3600;
+    const m = Math.floor(s / 60);
+    if (d > 0) return d + 'd' + h + 'h';
+    if (h > 0) return h + 'h' + m + 'm';
+    return m + 'm';
   }
   function fmtDate(ms) {
     if (!ms) return '—';
@@ -460,8 +472,9 @@
 
         // 两套月度额度分开记：auto = 标准积分（Notion 替你选模型），
         // flex = 自选积分（自己指定模型 / 自建代理）。两者独立，互不抵扣。
+        // resetAt 跟百分比同一个来源（periodEndMs），设置页那句「重置于 …」就是它。
         const bucketInfo = (a) => a && a.credits && typeof a.credits.used === 'number'
-          ? { used: a.credits.used, limit: a.credits.limit }
+          ? { used: a.credits.used, limit: a.credits.limit, resetAt: a.periodEndMs || 0 }
           : null;
         state.standard = bucketInfo(byBucket('auto'));
         state.select = bucketInfo(byBucket('flex'));
@@ -573,6 +586,7 @@
       '<span class="np-pct" id="np-r" title="6h 用量" hidden></span>' +
       '<i class="np-sep" id="np-sep-r" hidden></i>' +
       '<span class="np-pct" id="np-standard" title="标准积分 (Auto) 用量" hidden></span>' +
+      '<span class="np-eta" id="np-standard-eta" hidden></span>' +
       '<i class="np-sep" id="np-sep-standard" hidden></i>' +
       '<span class="np-pct" id="np-m" title="月度用量">—</span>' +
       '<i class="np-sep"></i>' +
@@ -588,6 +602,7 @@
     el.r = pill.querySelector('#np-r');
     el.sepR = pill.querySelector('#np-sep-r');
     el.standard = pill.querySelector('#np-standard');
+    el.standardEta = pill.querySelector('#np-standard-eta');
     el.sepStandard = pill.querySelector('#np-sep-standard');
     el.m = pill.querySelector('#np-m');
     el.plan = pill.querySelector('#np-plan');
@@ -630,7 +645,21 @@
     el.sepStandard.hidden = !showStandard;
     if (showStandard) {
       el.standard.textContent = fmtPct(standardPercent);
-      el.standard.title = '标准积分 (Auto) 用量：' + fmtNum(standard.used) + ' / ' + fmtNum(standard.limit);
+      el.standard.title = '标准积分 (Auto)：' + fmtNum(standard.used) + ' / ' + fmtNum(standard.limit) +
+        (standard.resetAt ? ' · 重置于 ' + fmtDate(standard.resetAt) : '');
+      // 剩不到 48 小时才把倒计时塞进药丸——平时不占位置，快到期时才提醒。
+      const leftMs = standard.resetAt ? standard.resetAt - Date.now() : 0;
+      if (leftMs > 0 && leftMs <= 48 * 3600 * 1000) {
+        el.standardEta.hidden = false;
+        el.standardEta.textContent = eta(standard.resetAt);
+        el.standardEta.title = '标准积分将在 ' + fmtDate(standard.resetAt) + ' 重置';
+      } else {
+        el.standardEta.hidden = true;
+        el.standardEta.textContent = '';
+      }
+    } else {
+      el.standardEta.hidden = true;
+      el.standardEta.textContent = '';
     }
     el.m.textContent = m ? fmtPct(m.percent) : '—';
     el.plan.textContent = state.plan ? state.plan.name : '—';
@@ -653,11 +682,11 @@
         '<span>' + until(r.resetAt) + ' 后重置</span></div></div>';
     }
     if (m) {
+      // 重置时间统一放到下面「结束/重置时间」一行，这里不再重复一遍。
       h += '<div class="np-sec">' +
         '<div class="np-lab"><span>月度用量</span><b>' + fmtPct(m.percent) + '</b></div>' +
         bar(m.percent) +
-        '<div class="np-meta"><span>' + m.used.toFixed(1) + ' / ' + m.limit + '</span>' +
-        '<span>' + fmtDate(m.resetAt) + ' 重置</span></div></div>';
+        '<div class="np-meta"><span>' + m.used.toFixed(1) + ' / ' + m.limit + '</span></div></div>';
     }
     // 两套月度积分分开列，口径是「积分」而不是百分比，和 Notion 设置页对得上。
     const bucketRow = (label, b, hint) => b
@@ -669,11 +698,22 @@
       : '';
     h += bucketRow('标准积分 (Auto)', state.standard, 'Notion 替你选模型');
     h += bucketRow('自选积分 (Select)', state.select, '自己指定模型 / 自建代理');
-    if (state.plan) {
-      h += '<div class="np-sec">' +
-        '<div class="np-row"><span>套餐</span><b>' + state.plan.name + '</b></div>' +
-        '<div class="np-row"><span>状态</span><span>' + (state.plan.status || '—') + '</span></div>' +
-        '<div class="np-row"><span>本周期至</span><span>' + fmtDate(state.plan.periodEnd) + '</span></div></div>';
+    // 两套积分共用同一个账单周期，重置时间只在这里说一次，不再在各自的行里重复。
+    // 优先用积分额度的 periodEndMs（那才是额度真正重置的时刻），订阅周期作为兜底。
+    const resetAt = (state.standard && state.standard.resetAt)
+      || (state.select && state.select.resetAt)
+      || (state.plan && state.plan.periodEnd) || 0;
+    if (state.plan || resetAt) {
+      h += '<div class="np-sec">';
+      if (state.plan) {
+        h += '<div class="np-row"><span>套餐</span><b>' + state.plan.name + '</b></div>' +
+          '<div class="np-row"><span>状态</span><span>' + (state.plan.status || '—') + '</span></div>';
+      }
+      if (resetAt) {
+        h += '<div class="np-row"><span>结束/重置时间</span><span>' + fmtDate(resetAt) +
+          (resetAt > Date.now() ? ' · ' + eta(resetAt) : '') + '</span></div>';
+      }
+      h += '</div>';
     }
     // Notion 桌面版的推理不走页面 fetch/XHR，抓不到单次 token，所以这里用
     // 额度增量来反映「这次打开用了多少」：每次轮询比对百分比，累加所消耗的量。
