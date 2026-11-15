@@ -2,3 +2,7 @@
 * text=auto eol=lf
 *.png binary
 *.patch text eol=lf
+# Windows 脚本必须是 CRLF，否则 bat/vbs 可能执行异常
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.vbs text eol=crlf

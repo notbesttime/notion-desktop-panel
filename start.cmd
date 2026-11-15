@@ -1,6 +1,10 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-rem 前台调试用：直接跑 launch.mjs，日志打到控制台。
-rem 正常使用请用 launch.vbs（无窗口）。
+rem Double-click to run. This foreground window prints the injector log live;
+rem closing it stops the injector, so the panel goes away with it.
+rem Once it works, switch to start.vbs for a windowless launch.
 node "%~dp0launch.mjs"
+echo.
+echo [exited] If the panel never appeared, check notion-panel.log
+pause

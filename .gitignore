@@ -9,7 +9,9 @@ tunnel.token
 .env.*
 !.env.example
 
-# 本机私有文件
+# 本机私有开关：存在则启动器顺带拉起 MCP/隧道（仓库里不带）
+.with-mcp
+.tunnel/
 backup/
 VibeHub*.md
 VibeHub*.txt

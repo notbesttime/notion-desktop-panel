@@ -1,5 +1,5 @@
 // launch.mjs — Notion 啟動器
-//   1. 確保 MCP 服務與 cloudflared 隧道在跑（交給 services.mjs 看護，本程式不再持有）
+//   1. （可選）若設 NOTION_PANEL_WITH_MCP=1，先確保 MCP 與隧道在跑；預設不做
 //   2. 若 9223 已有 Notion 在回應，直接進入注入，不重啟
 //   3. 否則結束所有 Notion.exe，再帶 --remote-debugging-port 啟動
 //   4. 在同一個程序內啟動注入程式；Notion 關閉時本程式結束，
@@ -113,7 +113,14 @@ function triggerServicesTask() {
   return r.status === 0;
 }
 
+// 面板只靠 CDP 注入，跟 MCP / 隧道完全无关。
+// 只有显式设了 NOTION_PANEL_WITH_MCP=1 才会去碰那两个服务（那是另一件事）。
+// 仓库里没有 .with-mcp 这个文件，所以默认就是纯面板。
+const WITH_MCP = process.env.NOTION_PANEL_WITH_MCP === '1'
+  || fs.existsSync(path.join(DIR, '.with-mcp'));
+
 async function ensureServices() {
+  if (!WITH_MCP) return;
   const mcpUp = await portInUse(MCP_PORT);
   const cfUp = cfRunning();
   if (mcpUp && cfUp) {
