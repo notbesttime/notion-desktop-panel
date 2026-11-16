@@ -355,35 +355,40 @@
     return null;
   }
 
+  // 一份额度响应里到底有没有「真数据」。
+  // 个人空间会返回 200，但 allowances 是空的；只看 HTTP 状态码会误判为正常，
+  // 面板于是显示成一串「—」。必须按内容判断。
+  const hasCredits = (v) => Array.isArray(v && v.allowances) && v.allowances.some(
+    (a) => a && a.state === 'resolved' && a.cadence === 'billing_period');
+
   async function refresh() {
-    const sid = spaceId();
+    let sid = spaceId();
     if (!sid) {
       state.lastError = '未取到 spaceId';
       render();
       return;
     }
     try {
-      let v;
+      let v = null;
+      let firstErr = null;
       try {
         v = await postJSON(ENDPOINTS.rolling, { spaceId: sid });
-      } catch (err) {
-        // 个人空间取额度会 403；换成已知的业务空间再试一次。
-        const alt = knownSpaceCandidates(sid);
-        let recovered = null;
-        for (const cand of alt) {
+      } catch (err) { firstErr = err; }
+
+      // 请求失败、或「200 但没有任何额度数据」，都换一个空间再试。
+      if (!hasCredits(v)) {
+        for (const cand of knownSpaceCandidates(sid)) {
           try {
-            recovered = await postJSON(ENDPOINTS.rolling, { spaceId: cand });
-            cacheSpaceId(cand);
-            break;
+            const r = await postJSON(ENDPOINTS.rolling, { spaceId: cand });
+            if (hasCredits(r)) { v = r; sid = cand; cacheSpaceId(cand); break; }
           } catch {}
         }
-        if (!recovered) throw err;
-        v = recovered;
       }
-
-      if (Array.isArray(v.allowances) && v.allowances.some((a) => a && a.state === 'resolved')) {
-        rememberGoodSpace(cachedSpaceId || sid);
+      if (!hasCredits(v)) {
+        if (firstErr) throw firstErr;
+        throw new Error('该空间没有可读的额度数据');
       }
+      rememberGoodSpace(sid);
 
       state.status = v.status || '';
 
